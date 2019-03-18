@@ -1,23 +1,22 @@
 package main
 
 const (
-	addrAbsolute  = iota
-	addrAbsoluteX // +1 if page crossed
-	addrAbsoluteY // +1 if page crossed
+	addrAbsolute = uint8(iota)
+	addrAbsoluteX
+	addrAbsoluteY
 	addrAccumulator
 	addrImmediate
 	addrImplied
+	addrIndexedIndirect
 	addrIndirect
-	addrIndirectX
-	addrIndirectY // +1 if page crossed
-	addrRelative  // +1 if branch succeeds, +2 if to a new page
+	addrIndirectIndexed
+	addrRelative
 	addrZeroPage
 	addrZeroPageX
 	addrZeroPageY
 )
-
 const (
-	insADC = iota
+	insADC = uint8(iota)
 	insAND
 	insASL
 	insBCC
@@ -102,9 +101,15 @@ const (
 	insXAS
 )
 
+type instruction struct {
+	id       uint8
+	cycles   uint8
+	exCyc    uint8
+	addrMode uint8
+}
+
 var (
-	instructions     = [256]instruction{}
-	instructionSizes = [...]int{3, 3, 3, 1, 2, 1, 3, 2, 2, 2, 2, 2, 2}
+	instructionSizes = [...]uint8{3, 3, 3, 1, 2, 1, 2, 3, 2, 2, 2, 2, 2}
 	instructionNames = [...]string{
 		"ADC", "AND", "ASL", "BCC", "BCS", "BEQ", "BIT", "BMI", "BNE", "BPL",
 		"BRK", "BVC", "BVS", "CLC", "CLD", "CLI", "CLV", "CMP", "CPX", "CPY",
@@ -117,269 +122,264 @@ var (
 		"KIL", "LAR", "LAX", "RLA", "RRA", "SLO", "SRE", "SXA", "SYA", "TOP",
 		"XAA", "XAS",
 	}
+	instructions = [256]instruction{
+		0x69: instruction{insADC, 2, 0, addrImmediate},
+		0x65: instruction{insADC, 3, 0, addrZeroPage},
+		0x75: instruction{insADC, 4, 0, addrZeroPageX},
+		0x6D: instruction{insADC, 4, 0, addrAbsolute},
+		0x7D: instruction{insADC, 4, 1, addrAbsoluteX},
+		0x79: instruction{insADC, 4, 1, addrAbsoluteY},
+		0x61: instruction{insADC, 6, 0, addrIndexedIndirect},
+		0x71: instruction{insADC, 5, 1, addrIndirectIndexed},
+		0x29: instruction{insAND, 2, 0, addrImmediate},
+		0x25: instruction{insAND, 3, 0, addrZeroPage},
+		0x35: instruction{insAND, 4, 0, addrZeroPageX},
+		0x2D: instruction{insAND, 4, 0, addrAbsolute},
+		0x3D: instruction{insAND, 4, 1, addrAbsoluteX},
+		0x39: instruction{insAND, 4, 1, addrAbsoluteY},
+		0x21: instruction{insAND, 6, 0, addrIndexedIndirect},
+		0x31: instruction{insAND, 5, 1, addrIndirectIndexed},
+		0x0A: instruction{insASL, 2, 0, addrAccumulator},
+		0x06: instruction{insASL, 5, 0, addrZeroPage},
+		0x16: instruction{insASL, 6, 0, addrZeroPageX},
+		0x0E: instruction{insASL, 6, 0, addrAbsolute},
+		0x1E: instruction{insASL, 7, 0, addrAbsoluteX},
+		0x90: instruction{insBCC, 2, 1, addrRelative},
+		0xB0: instruction{insBCS, 2, 1, addrRelative},
+		0xF0: instruction{insBEQ, 2, 1, addrRelative},
+		0x24: instruction{insBIT, 3, 0, addrZeroPage},
+		0x2C: instruction{insBIT, 4, 0, addrAbsolute},
+		0x30: instruction{insBMI, 2, 1, addrRelative},
+		0xD0: instruction{insBNE, 2, 1, addrRelative},
+		0x10: instruction{insBPL, 2, 1, addrRelative},
+		0x00: instruction{insBRK, 7, 0, addrImplied},
+		0x50: instruction{insBVC, 2, 1, addrRelative},
+		0x70: instruction{insBVS, 2, 1, addrRelative},
+		0x18: instruction{insCLC, 2, 0, addrImplied},
+		0xD8: instruction{insCLD, 2, 0, addrImplied},
+		0x58: instruction{insCLI, 2, 0, addrImplied},
+		0xB8: instruction{insCLV, 2, 0, addrImplied},
+		0xC9: instruction{insCMP, 2, 0, addrImmediate},
+		0xC5: instruction{insCMP, 3, 0, addrZeroPage},
+		0xD5: instruction{insCMP, 4, 0, addrZeroPageX},
+		0xCD: instruction{insCMP, 4, 0, addrAbsolute},
+		0xDD: instruction{insCMP, 4, 1, addrAbsoluteX},
+		0xD9: instruction{insCMP, 4, 1, addrAbsoluteY},
+		0xC1: instruction{insCMP, 6, 0, addrIndexedIndirect},
+		0xD1: instruction{insCMP, 5, 1, addrIndirectIndexed},
+		0xE0: instruction{insCPX, 2, 0, addrImmediate},
+		0xE4: instruction{insCPX, 3, 0, addrZeroPage},
+		0xEC: instruction{insCPX, 4, 0, addrAbsolute},
+		0xC0: instruction{insCPY, 2, 0, addrImmediate},
+		0xC4: instruction{insCPY, 3, 0, addrZeroPage},
+		0xCC: instruction{insCPY, 4, 0, addrAbsolute},
+		0xC6: instruction{insDEC, 5, 0, addrZeroPage},
+		0xD6: instruction{insDEC, 6, 0, addrZeroPageX},
+		0xCE: instruction{insDEC, 6, 0, addrAbsolute},
+		0xDE: instruction{insDEC, 7, 0, addrAbsoluteX},
+		0xCA: instruction{insDEX, 2, 0, addrImplied},
+		0x88: instruction{insDEY, 2, 0, addrImplied},
+		0x49: instruction{insEOR, 2, 0, addrImmediate},
+		0x45: instruction{insEOR, 3, 0, addrZeroPage},
+		0x55: instruction{insEOR, 4, 0, addrZeroPageX},
+		0x4D: instruction{insEOR, 4, 0, addrAbsolute},
+		0x5D: instruction{insEOR, 4, 1, addrAbsoluteX},
+		0x59: instruction{insEOR, 4, 1, addrAbsoluteY},
+		0x41: instruction{insEOR, 6, 0, addrIndexedIndirect},
+		0x51: instruction{insEOR, 5, 1, addrIndirectIndexed},
+		0xE6: instruction{insINC, 5, 0, addrZeroPage},
+		0xF6: instruction{insINC, 6, 0, addrZeroPageX},
+		0xEE: instruction{insINC, 6, 0, addrAbsolute},
+		0xFE: instruction{insINC, 7, 0, addrAbsoluteX},
+		0xE8: instruction{insINX, 2, 0, addrImplied},
+		0xC8: instruction{insINY, 2, 0, addrImplied},
+		0x4C: instruction{insJMP, 3, 0, addrAbsolute},
+		0x6C: instruction{insJMP, 5, 0, addrIndirect},
+		0x20: instruction{insJSR, 6, 0, addrAbsolute},
+		0xA9: instruction{insLDA, 2, 0, addrImmediate},
+		0xA5: instruction{insLDA, 3, 0, addrZeroPage},
+		0xB5: instruction{insLDA, 4, 0, addrZeroPageX},
+		0xAD: instruction{insLDA, 4, 0, addrAbsolute},
+		0xBD: instruction{insLDA, 4, 1, addrAbsoluteX},
+		0xB9: instruction{insLDA, 4, 1, addrAbsoluteY},
+		0xA1: instruction{insLDA, 6, 0, addrIndexedIndirect},
+		0xB1: instruction{insLDA, 5, 1, addrIndirectIndexed},
+		0xA2: instruction{insLDX, 2, 0, addrImmediate},
+		0xA6: instruction{insLDX, 3, 0, addrZeroPage},
+		0xB6: instruction{insLDX, 4, 0, addrZeroPageY},
+		0xAE: instruction{insLDX, 4, 0, addrAbsolute},
+		0xBE: instruction{insLDX, 4, 1, addrAbsoluteY},
+		0xA0: instruction{insLDY, 2, 0, addrImmediate},
+		0xA4: instruction{insLDY, 3, 0, addrZeroPage},
+		0xB4: instruction{insLDY, 4, 0, addrZeroPageX},
+		0xAC: instruction{insLDY, 4, 0, addrAbsolute},
+		0xBC: instruction{insLDY, 4, 1, addrAbsoluteX},
+		0x4A: instruction{insLSR, 2, 0, addrAccumulator},
+		0x46: instruction{insLSR, 5, 0, addrZeroPage},
+		0x56: instruction{insLSR, 6, 0, addrZeroPageX},
+		0x4E: instruction{insLSR, 6, 0, addrAbsolute},
+		0x5E: instruction{insLSR, 7, 0, addrAbsoluteX},
+		0xEA: instruction{insNOP, 2, 0, addrImplied},
+		0x09: instruction{insORA, 2, 0, addrImmediate},
+		0x05: instruction{insORA, 3, 0, addrZeroPage},
+		0x15: instruction{insORA, 4, 0, addrZeroPageX},
+		0x0D: instruction{insORA, 4, 0, addrAbsolute},
+		0x1D: instruction{insORA, 4, 1, addrAbsoluteX},
+		0x19: instruction{insORA, 4, 1, addrAbsoluteY},
+		0x01: instruction{insORA, 6, 0, addrIndexedIndirect},
+		0x11: instruction{insORA, 5, 1, addrIndirectIndexed},
+		0x48: instruction{insPHA, 3, 0, addrImplied},
+		0x08: instruction{insPHP, 3, 0, addrImplied},
+		0x68: instruction{insPLA, 4, 0, addrImplied},
+		0x28: instruction{insPLP, 4, 0, addrImplied},
+		0x2A: instruction{insROL, 2, 0, addrAccumulator},
+		0x26: instruction{insROL, 5, 0, addrZeroPage},
+		0x36: instruction{insROL, 6, 0, addrZeroPageX},
+		0x2E: instruction{insROL, 6, 0, addrAbsolute},
+		0x3E: instruction{insROL, 7, 0, addrAbsoluteX},
+		0x6A: instruction{insROR, 2, 0, addrAccumulator},
+		0x66: instruction{insROR, 5, 0, addrZeroPage},
+		0x76: instruction{insROR, 6, 0, addrZeroPageX},
+		0x6E: instruction{insROR, 6, 0, addrAbsolute},
+		0x7E: instruction{insROR, 7, 0, addrAbsoluteX},
+		0x40: instruction{insRTI, 6, 0, addrImplied},
+		0x60: instruction{insRTS, 6, 0, addrImplied},
+		0xE9: instruction{insSBC, 2, 0, addrImmediate},
+		0xE5: instruction{insSBC, 3, 0, addrZeroPage},
+		0xF5: instruction{insSBC, 4, 0, addrZeroPageX},
+		0xED: instruction{insSBC, 4, 0, addrAbsolute},
+		0xFD: instruction{insSBC, 4, 1, addrAbsoluteX},
+		0xF9: instruction{insSBC, 4, 1, addrAbsoluteY},
+		0xE1: instruction{insSBC, 6, 0, addrIndexedIndirect},
+		0xF1: instruction{insSBC, 5, 1, addrIndirectIndexed},
+		0x38: instruction{insSEC, 2, 0, addrImplied},
+		0xF8: instruction{insSED, 2, 0, addrImplied},
+		0x78: instruction{insSEI, 2, 0, addrImplied},
+		0x85: instruction{insSTA, 3, 0, addrZeroPage},
+		0x95: instruction{insSTA, 4, 0, addrZeroPageX},
+		0x8D: instruction{insSTA, 4, 0, addrAbsolute},
+		0x9D: instruction{insSTA, 5, 0, addrAbsoluteX},
+		0x99: instruction{insSTA, 5, 0, addrAbsoluteY},
+		0x81: instruction{insSTA, 6, 0, addrIndexedIndirect},
+		0x91: instruction{insSTA, 6, 0, addrIndirectIndexed},
+		0x86: instruction{insSTX, 3, 0, addrZeroPage},
+		0x96: instruction{insSTX, 4, 0, addrZeroPageY},
+		0x8E: instruction{insSTX, 4, 0, addrAbsolute},
+		0x84: instruction{insSTY, 3, 0, addrZeroPage},
+		0x94: instruction{insSTY, 4, 0, addrZeroPageX},
+		0x8C: instruction{insSTY, 4, 0, addrAbsolute},
+		0xAA: instruction{insTAX, 2, 0, addrImplied},
+		0xA8: instruction{insTAY, 2, 0, addrImplied},
+		0xBA: instruction{insTSX, 2, 0, addrImplied},
+		0x8A: instruction{insTXA, 2, 0, addrImplied},
+		0x9A: instruction{insTXS, 2, 0, addrImplied},
+		0x98: instruction{insTYA, 2, 0, addrImplied},
+
+		// unofficial instructions
+		0x0B: instruction{insAAC, 2, 0, addrImmediate},
+		0x2B: instruction{insAAC, 2, 0, addrImmediate},
+		0x87: instruction{insAAX, 3, 0, addrZeroPage},
+		0x97: instruction{insAAX, 4, 0, addrZeroPageY},
+		0x83: instruction{insAAX, 6, 0, addrIndexedIndirect},
+		0x8F: instruction{insAAX, 4, 0, addrAbsolute},
+		0x6B: instruction{insARR, 2, 0, addrImmediate},
+		0x4B: instruction{insASR, 2, 0, addrImmediate},
+		0xAB: instruction{insATX, 2, 0, addrImmediate},
+		0x9F: instruction{insAXA, 5, 0, addrAbsoluteY},
+		0x93: instruction{insAXA, 6, 0, addrIndirectIndexed},
+		0xCB: instruction{insAXS, 2, 0, addrImmediate},
+		0xC7: instruction{insDCP, 5, 0, addrZeroPage},
+		0xD7: instruction{insDCP, 6, 0, addrZeroPageX},
+		0xCF: instruction{insDCP, 6, 0, addrAbsolute},
+		0xDF: instruction{insDCP, 7, 0, addrAbsoluteX},
+		0xDB: instruction{insDCP, 7, 0, addrAbsoluteY},
+		0xC3: instruction{insDCP, 8, 0, addrIndexedIndirect},
+		0xD3: instruction{insDCP, 8, 0, addrIndirectIndexed},
+		0x04: instruction{insDOP, 3, 0, addrZeroPage},
+		0x14: instruction{insDOP, 4, 0, addrZeroPageX},
+		0x34: instruction{insDOP, 4, 0, addrZeroPageX},
+		0x44: instruction{insDOP, 3, 0, addrZeroPage},
+		0x54: instruction{insDOP, 4, 0, addrZeroPageX},
+		0x64: instruction{insDOP, 3, 0, addrZeroPage},
+		0x74: instruction{insDOP, 4, 0, addrZeroPageX},
+		0x80: instruction{insDOP, 2, 0, addrImmediate},
+		0x82: instruction{insDOP, 2, 0, addrImmediate},
+		0x89: instruction{insDOP, 2, 0, addrImmediate},
+		0xC2: instruction{insDOP, 2, 0, addrImmediate},
+		0xD4: instruction{insDOP, 4, 0, addrZeroPageX},
+		0xE2: instruction{insDOP, 2, 0, addrImmediate},
+		0xF4: instruction{insDOP, 4, 0, addrZeroPageX},
+		0xE7: instruction{insISC, 5, 0, addrZeroPage},
+		0xF7: instruction{insISC, 6, 0, addrZeroPageX},
+		0xEF: instruction{insISC, 6, 0, addrAbsolute},
+		0xFF: instruction{insISC, 7, 0, addrAbsoluteX},
+		0xFB: instruction{insISC, 7, 0, addrAbsoluteY},
+		0xE3: instruction{insISC, 8, 0, addrIndexedIndirect},
+		0xF3: instruction{insISC, 8, 0, addrIndirectIndexed},
+		0x02: instruction{insKIL, 0, 0, addrImplied},
+		0x12: instruction{insKIL, 0, 0, addrImplied},
+		0x22: instruction{insKIL, 0, 0, addrImplied},
+		0x32: instruction{insKIL, 0, 0, addrImplied},
+		0x42: instruction{insKIL, 0, 0, addrImplied},
+		0x52: instruction{insKIL, 0, 0, addrImplied},
+		0x62: instruction{insKIL, 0, 0, addrImplied},
+		0x72: instruction{insKIL, 0, 0, addrImplied},
+		0x92: instruction{insKIL, 0, 0, addrImplied},
+		0xB2: instruction{insKIL, 0, 0, addrImplied},
+		0xD2: instruction{insKIL, 0, 0, addrImplied},
+		0xF2: instruction{insKIL, 0, 0, addrImplied},
+		0xBB: instruction{insLAR, 4, 1, addrAbsoluteY},
+		0xA7: instruction{insLAX, 3, 0, addrZeroPage},
+		0xB7: instruction{insLAX, 4, 0, addrZeroPageY},
+		0xAF: instruction{insLAX, 4, 0, addrAbsolute},
+		0xBF: instruction{insLAX, 4, 1, addrAbsoluteY},
+		0xA3: instruction{insLAX, 6, 0, addrIndexedIndirect},
+		0xB3: instruction{insLAX, 5, 1, addrIndirectIndexed},
+		0x1A: instruction{insNOP, 2, 0, addrImplied},
+		0x3A: instruction{insNOP, 2, 0, addrImplied},
+		0x5A: instruction{insNOP, 2, 0, addrImplied},
+		0x7A: instruction{insNOP, 2, 0, addrImplied},
+		0xDA: instruction{insNOP, 2, 0, addrImplied},
+		0xFA: instruction{insNOP, 2, 0, addrImplied},
+		0x27: instruction{insRLA, 5, 0, addrZeroPage},
+		0x37: instruction{insRLA, 6, 0, addrZeroPageX},
+		0x2F: instruction{insRLA, 6, 0, addrAbsolute},
+		0x3F: instruction{insRLA, 7, 0, addrAbsoluteX},
+		0x3B: instruction{insRLA, 7, 0, addrAbsoluteY},
+		0x23: instruction{insRLA, 8, 0, addrIndexedIndirect},
+		0x33: instruction{insRLA, 8, 0, addrIndirectIndexed},
+		0x67: instruction{insRRA, 5, 0, addrZeroPage},
+		0x77: instruction{insRRA, 6, 0, addrZeroPageX},
+		0x6F: instruction{insRRA, 6, 0, addrAbsolute},
+		0x7F: instruction{insRRA, 7, 0, addrAbsoluteX},
+		0x7B: instruction{insRRA, 7, 0, addrAbsoluteY},
+		0x63: instruction{insRRA, 8, 0, addrIndexedIndirect},
+		0x73: instruction{insRRA, 8, 0, addrIndirectIndexed},
+		0xEB: instruction{insSBC, 2, 0, addrImmediate},
+		0x07: instruction{insSLO, 5, 0, addrZeroPage},
+		0x17: instruction{insSLO, 6, 0, addrZeroPageX},
+		0x0F: instruction{insSLO, 6, 0, addrAbsolute},
+		0x1F: instruction{insSLO, 7, 0, addrAbsoluteX},
+		0x1B: instruction{insSLO, 7, 0, addrAbsoluteY},
+		0x03: instruction{insSLO, 8, 0, addrIndexedIndirect},
+		0x13: instruction{insSLO, 8, 0, addrIndirectIndexed},
+		0x47: instruction{insSRE, 5, 0, addrZeroPage},
+		0x57: instruction{insSRE, 6, 0, addrZeroPageX},
+		0x4F: instruction{insSRE, 6, 0, addrAbsolute},
+		0x5F: instruction{insSRE, 7, 0, addrAbsoluteX},
+		0x5B: instruction{insSRE, 7, 0, addrAbsoluteY},
+		0x43: instruction{insSRE, 8, 0, addrIndexedIndirect},
+		0x53: instruction{insSRE, 8, 0, addrIndirectIndexed},
+		0x9E: instruction{insSXA, 5, 0, addrAbsoluteY},
+		0x9C: instruction{insSYA, 5, 0, addrAbsoluteX},
+		0x0C: instruction{insTOP, 4, 0, addrAbsolute},
+		0x1C: instruction{insTOP, 4, 1, addrAbsoluteX},
+		0x3C: instruction{insTOP, 4, 1, addrAbsoluteX},
+		0x5C: instruction{insTOP, 4, 1, addrAbsoluteX},
+		0x7C: instruction{insTOP, 4, 1, addrAbsoluteX},
+		0xDC: instruction{insTOP, 4, 1, addrAbsoluteX},
+		0xFC: instruction{insTOP, 4, 1, addrAbsoluteX},
+		0x8B: instruction{insXAA, 2, 0, addrImmediate},
+		0x9B: instruction{insXAS, 5, 0, addrAbsoluteY},
+	}
 )
-
-func setIns(ins, opcode, cycles byte, addrMode int) {
-	instructions[opcode] = instruction{ins, addrMode, cycles}
-}
-
-func init() {
-	setIns(insADC, 0x69, 2, addrImmediate)
-	setIns(insADC, 0x65, 3, addrZeroPage)
-	setIns(insADC, 0x75, 4, addrZeroPageX)
-	setIns(insADC, 0x6D, 4, addrAbsolute)
-	setIns(insADC, 0x7D, 4, addrAbsoluteX)
-	setIns(insADC, 0x79, 4, addrAbsoluteY)
-	setIns(insADC, 0x61, 6, addrIndirectX)
-	setIns(insADC, 0x71, 5, addrIndirectY)
-	setIns(insAND, 0x29, 2, addrImmediate)
-	setIns(insAND, 0x25, 3, addrZeroPage)
-	setIns(insAND, 0x35, 4, addrZeroPageX)
-	setIns(insAND, 0x2D, 4, addrAbsolute)
-	setIns(insAND, 0x3D, 4, addrAbsoluteX)
-	setIns(insAND, 0x39, 4, addrAbsoluteY)
-	setIns(insAND, 0x21, 6, addrIndirectX)
-	setIns(insAND, 0x31, 5, addrIndirectY)
-	setIns(insASL, 0x0A, 2, addrAccumulator)
-	setIns(insASL, 0x06, 5, addrZeroPage)
-	setIns(insASL, 0x16, 6, addrZeroPageX)
-	setIns(insASL, 0x0E, 6, addrAbsolute)
-	setIns(insASL, 0x1E, 7, addrAbsoluteX)
-	setIns(insBCC, 0x90, 2, addrRelative)
-	setIns(insBCS, 0xB0, 2, addrRelative)
-	setIns(insBEQ, 0xF0, 2, addrRelative)
-	setIns(insBIT, 0x24, 3, addrZeroPage)
-	setIns(insBIT, 0x2C, 4, addrAbsolute)
-	setIns(insBMI, 0x30, 2, addrRelative)
-	setIns(insBNE, 0xD0, 2, addrRelative)
-	setIns(insBPL, 0x10, 2, addrRelative)
-	setIns(insBRK, 0x00, 7, addrImplied)
-	setIns(insBVC, 0x50, 2, addrRelative)
-	setIns(insBVS, 0x70, 2, addrRelative)
-	setIns(insCLC, 0x18, 2, addrImplied)
-	setIns(insCLD, 0xD8, 2, addrImplied)
-	setIns(insCLI, 0x58, 2, addrImplied)
-	setIns(insCLV, 0xB8, 2, addrImplied)
-	setIns(insCMP, 0xC9, 2, addrImmediate)
-	setIns(insCMP, 0xC5, 3, addrZeroPage)
-	setIns(insCMP, 0xD5, 4, addrZeroPageX)
-	setIns(insCMP, 0xCD, 4, addrAbsolute)
-	setIns(insCMP, 0xDD, 4, addrAbsoluteX)
-	setIns(insCMP, 0xD9, 4, addrAbsoluteY)
-	setIns(insCMP, 0xC1, 6, addrIndirectX)
-	setIns(insCMP, 0xD1, 5, addrIndirectY)
-	setIns(insCPX, 0xE0, 2, addrImmediate)
-	setIns(insCPX, 0xE4, 3, addrZeroPage)
-	setIns(insCPX, 0xEC, 4, addrAbsolute)
-	setIns(insCPY, 0xC0, 2, addrImmediate)
-	setIns(insCPY, 0xC4, 3, addrZeroPage)
-	setIns(insCPY, 0xCC, 4, addrAbsolute)
-	setIns(insDEC, 0xC6, 5, addrZeroPage)
-	setIns(insDEC, 0xD6, 6, addrZeroPageX)
-	setIns(insDEC, 0xCE, 6, addrAbsolute)
-	setIns(insDEC, 0xDE, 7, addrAbsoluteX)
-	setIns(insDEX, 0xCA, 2, addrImplied)
-	setIns(insDEY, 0x88, 2, addrImplied)
-	setIns(insEOR, 0x49, 2, addrImmediate)
-	setIns(insEOR, 0x45, 3, addrZeroPage)
-	setIns(insEOR, 0x55, 4, addrZeroPageX)
-	setIns(insEOR, 0x4D, 4, addrAbsolute)
-	setIns(insEOR, 0x5D, 4, addrAbsoluteX)
-	setIns(insEOR, 0x59, 4, addrAbsoluteY)
-	setIns(insEOR, 0x41, 6, addrIndirectX)
-	setIns(insEOR, 0x51, 5, addrIndirectY)
-	setIns(insINC, 0xE6, 5, addrZeroPage)
-	setIns(insINC, 0xF6, 6, addrZeroPageX)
-	setIns(insINC, 0xEE, 6, addrAbsolute)
-	setIns(insINC, 0xFE, 7, addrAbsoluteX)
-	setIns(insINX, 0xE8, 2, addrImplied)
-	setIns(insINY, 0xC8, 2, addrImplied)
-	setIns(insJMP, 0x4C, 3, addrAbsolute)
-	setIns(insJMP, 0x6C, 5, addrIndirect)
-	setIns(insJSR, 0x20, 6, addrAbsolute)
-	setIns(insLDA, 0xA9, 2, addrImmediate)
-	setIns(insLDA, 0xA5, 3, addrZeroPage)
-	setIns(insLDA, 0xB5, 4, addrZeroPageX)
-	setIns(insLDA, 0xAD, 4, addrAbsolute)
-	setIns(insLDA, 0xBD, 4, addrAbsoluteX)
-	setIns(insLDA, 0xB9, 4, addrAbsoluteY)
-	setIns(insLDA, 0xA1, 6, addrIndirectX)
-	setIns(insLDA, 0xB1, 5, addrIndirectY)
-	setIns(insLDX, 0xA2, 2, addrImmediate)
-	setIns(insLDX, 0xA6, 3, addrZeroPage)
-	setIns(insLDX, 0xB6, 4, addrZeroPageY)
-	setIns(insLDX, 0xAE, 4, addrAbsolute)
-	setIns(insLDX, 0xBE, 4, addrAbsoluteY)
-	setIns(insLDY, 0xA0, 2, addrImmediate)
-	setIns(insLDY, 0xA4, 3, addrZeroPage)
-	setIns(insLDY, 0xB4, 4, addrZeroPageX)
-	setIns(insLDY, 0xAC, 4, addrAbsolute)
-	setIns(insLDY, 0xBC, 4, addrAbsoluteX)
-	setIns(insLSR, 0x4A, 2, addrAccumulator)
-	setIns(insLSR, 0x46, 5, addrZeroPage)
-	setIns(insLSR, 0x56, 6, addrZeroPageX)
-	setIns(insLSR, 0x4E, 6, addrAbsolute)
-	setIns(insLSR, 0x5E, 7, addrAbsoluteX)
-	setIns(insNOP, 0xEA, 2, addrImplied)
-	setIns(insORA, 0x09, 2, addrImmediate)
-	setIns(insORA, 0x05, 3, addrZeroPage)
-	setIns(insORA, 0x15, 4, addrZeroPageX)
-	setIns(insORA, 0x0D, 4, addrAbsolute)
-	setIns(insORA, 0x1D, 4, addrAbsoluteX)
-	setIns(insORA, 0x19, 4, addrAbsoluteY)
-	setIns(insORA, 0x01, 6, addrIndirectX)
-	setIns(insORA, 0x11, 5, addrIndirectY)
-	setIns(insPHA, 0x48, 3, addrImplied)
-	setIns(insPHP, 0x08, 3, addrImplied)
-	setIns(insPLA, 0x68, 4, addrImplied)
-	setIns(insPLP, 0x28, 4, addrImplied)
-	setIns(insROL, 0x2A, 2, addrAccumulator)
-	setIns(insROL, 0x26, 5, addrZeroPage)
-	setIns(insROL, 0x36, 6, addrZeroPageX)
-	setIns(insROL, 0x2E, 6, addrAbsolute)
-	setIns(insROL, 0x3E, 7, addrAbsoluteX)
-	setIns(insROR, 0x6A, 2, addrAccumulator)
-	setIns(insROR, 0x66, 5, addrZeroPage)
-	setIns(insROR, 0x76, 6, addrZeroPageX)
-	setIns(insROR, 0x6E, 6, addrAbsolute)
-	setIns(insROR, 0x7E, 7, addrAbsoluteX)
-	setIns(insRTI, 0x40, 6, addrImplied)
-	setIns(insRTS, 0x60, 6, addrImplied)
-	setIns(insSBC, 0xE9, 2, addrImmediate)
-	setIns(insSBC, 0xE5, 3, addrZeroPage)
-	setIns(insSBC, 0xF5, 4, addrZeroPageX)
-	setIns(insSBC, 0xED, 4, addrAbsolute)
-	setIns(insSBC, 0xFD, 4, addrAbsoluteX)
-	setIns(insSBC, 0xF9, 4, addrAbsoluteY)
-	setIns(insSBC, 0xE1, 6, addrIndirectX)
-	setIns(insSBC, 0xF1, 5, addrIndirectY)
-	setIns(insSEC, 0x38, 2, addrImplied)
-	setIns(insSED, 0xF8, 2, addrImplied)
-	setIns(insSEI, 0x78, 2, addrImplied)
-	setIns(insSTA, 0x85, 3, addrZeroPage)
-	setIns(insSTA, 0x95, 4, addrZeroPageX)
-	setIns(insSTA, 0x8D, 4, addrAbsolute)
-	setIns(insSTA, 0x9D, 5, addrAbsoluteX)
-	setIns(insSTA, 0x99, 5, addrAbsoluteY)
-	setIns(insSTA, 0x81, 6, addrIndirectX)
-	setIns(insSTA, 0x91, 6, addrIndirectY)
-	setIns(insSTX, 0x86, 3, addrZeroPage)
-	setIns(insSTX, 0x96, 4, addrZeroPageY)
-	setIns(insSTX, 0x8E, 4, addrAbsolute)
-	setIns(insSTY, 0x84, 3, addrZeroPage)
-	setIns(insSTY, 0x94, 4, addrZeroPageX)
-	setIns(insSTY, 0x8C, 4, addrAbsolute)
-	setIns(insTAX, 0xAA, 2, addrImplied)
-	setIns(insTAY, 0xA8, 2, addrImplied)
-	setIns(insTSX, 0xBA, 2, addrImplied)
-	setIns(insTXA, 0x8A, 2, addrImplied)
-	setIns(insTXS, 0x9A, 2, addrImplied)
-	setIns(insTYA, 0x98, 2, addrImplied)
-
-	// unofficial instructions
-	setIns(insAAC, 0x0B, 2, addrImmediate)
-	setIns(insAAC, 0x2B, 2, addrImmediate)
-	setIns(insAAX, 0x87, 3, addrZeroPage)
-	setIns(insAAX, 0x97, 4, addrZeroPageX)
-	setIns(insAAX, 0x83, 6, addrIndirectX)
-	setIns(insAAX, 0x8F, 4, addrAbsolute)
-	setIns(insARR, 0x6B, 2, addrImmediate)
-	setIns(insASR, 0x4B, 2, addrImmediate)
-	setIns(insATX, 0xAB, 2, addrImmediate)
-	setIns(insAXA, 0x9F, 5, addrAbsoluteY)
-	setIns(insAXA, 0x93, 6, addrIndirectY)
-	setIns(insAXS, 0xCB, 2, addrImmediate)
-	setIns(insDCP, 0xC7, 5, addrZeroPage)
-	setIns(insDCP, 0xD7, 6, addrZeroPageX)
-	setIns(insDCP, 0xCF, 6, addrAbsolute)
-	setIns(insDCP, 0xDF, 7, addrAbsoluteX)
-	setIns(insDCP, 0xDB, 7, addrAbsoluteY)
-	setIns(insDCP, 0xC3, 8, addrIndirectX)
-	setIns(insDCP, 0xD3, 8, addrIndirectY)
-	setIns(insDOP, 0x04, 3, addrZeroPage)
-	setIns(insDOP, 0x14, 4, addrZeroPageX)
-	setIns(insDOP, 0x34, 4, addrZeroPageX)
-	setIns(insDOP, 0x44, 3, addrZeroPage)
-	setIns(insDOP, 0x54, 4, addrZeroPageX)
-	setIns(insDOP, 0x64, 3, addrZeroPage)
-	setIns(insDOP, 0x74, 4, addrZeroPageX)
-	setIns(insDOP, 0x80, 2, addrImmediate)
-	setIns(insDOP, 0x82, 2, addrImmediate)
-	setIns(insDOP, 0x89, 2, addrImmediate)
-	setIns(insDOP, 0xC2, 2, addrImmediate)
-	setIns(insDOP, 0xD4, 4, addrZeroPageX)
-	setIns(insDOP, 0xE2, 2, addrImmediate)
-	setIns(insDOP, 0xF4, 4, addrZeroPageX)
-	setIns(insISC, 0xE7, 5, addrZeroPage)
-	setIns(insISC, 0xF7, 6, addrZeroPageX)
-	setIns(insISC, 0xEF, 6, addrAbsolute)
-	setIns(insISC, 0xFF, 7, addrAbsoluteX)
-	setIns(insISC, 0xFB, 7, addrAbsoluteY)
-	setIns(insISC, 0xE3, 8, addrIndirectX)
-	setIns(insISC, 0xF3, 8, addrIndirectY)
-	setIns(insKIL, 0x02, 0, addrImplied)
-	setIns(insKIL, 0x12, 0, addrImplied)
-	setIns(insKIL, 0x22, 0, addrImplied)
-	setIns(insKIL, 0x32, 0, addrImplied)
-	setIns(insKIL, 0x42, 0, addrImplied)
-	setIns(insKIL, 0x52, 0, addrImplied)
-	setIns(insKIL, 0x62, 0, addrImplied)
-	setIns(insKIL, 0x72, 0, addrImplied)
-	setIns(insKIL, 0x92, 0, addrImplied)
-	setIns(insKIL, 0xB2, 0, addrImplied)
-	setIns(insKIL, 0xD2, 0, addrImplied)
-	setIns(insKIL, 0xF2, 0, addrImplied)
-	setIns(insLAR, 0xBB, 4, addrAbsoluteY)
-	setIns(insLAX, 0xA7, 3, addrZeroPage)
-	setIns(insLAX, 0xB7, 4, addrZeroPageY)
-	setIns(insLAX, 0xAF, 4, addrAbsolute)
-	setIns(insLAX, 0xBF, 4, addrAbsoluteY)
-	setIns(insLAX, 0xA3, 6, addrIndirectX)
-	setIns(insLAX, 0xB3, 5, addrIndirectY)
-	setIns(insNOP, 0x1A, 2, addrImplied)
-	setIns(insNOP, 0x3A, 2, addrImplied)
-	setIns(insNOP, 0x5A, 2, addrImplied)
-	setIns(insNOP, 0x7A, 2, addrImplied)
-	setIns(insNOP, 0xDA, 2, addrImplied)
-	setIns(insNOP, 0xFA, 2, addrImplied)
-	setIns(insRLA, 0x27, 5, addrZeroPage)
-	setIns(insRLA, 0x37, 6, addrZeroPageX)
-	setIns(insRLA, 0x2F, 6, addrAbsolute)
-	setIns(insRLA, 0x3F, 7, addrAbsoluteX)
-	setIns(insRLA, 0x3B, 7, addrAbsoluteY)
-	setIns(insRLA, 0x23, 8, addrIndirectX)
-	setIns(insRLA, 0x33, 8, addrIndirectY)
-	setIns(insRRA, 0x67, 5, addrZeroPage)
-	setIns(insRRA, 0x77, 6, addrZeroPageX)
-	setIns(insRRA, 0x6F, 6, addrAbsolute)
-	setIns(insRRA, 0x7F, 7, addrAbsoluteX)
-	setIns(insRRA, 0x7B, 7, addrAbsoluteY)
-	setIns(insRRA, 0x63, 8, addrIndirectX)
-	setIns(insRRA, 0x73, 8, addrIndirectY)
-	setIns(insSBC, 0xEB, 2, addrImmediate)
-	setIns(insSLO, 0x07, 5, addrZeroPage)
-	setIns(insSLO, 0x17, 6, addrZeroPageX)
-	setIns(insSLO, 0x0F, 6, addrAbsolute)
-	setIns(insSLO, 0x1F, 7, addrAbsoluteX)
-	setIns(insSLO, 0x1B, 7, addrAbsoluteY)
-	setIns(insSLO, 0x03, 8, addrIndirectX)
-	setIns(insSLO, 0x13, 8, addrIndirectY)
-	setIns(insSRE, 0x47, 5, addrZeroPage)
-	setIns(insSRE, 0x57, 6, addrZeroPageX)
-	setIns(insSRE, 0x4F, 6, addrAbsolute)
-	setIns(insSRE, 0x5F, 7, addrAbsoluteX)
-	setIns(insSRE, 0x5B, 7, addrAbsoluteY)
-	setIns(insSRE, 0x43, 8, addrIndirectX)
-	setIns(insSRE, 0x53, 8, addrIndirectY)
-	setIns(insSXA, 0x9E, 5, addrAbsoluteY)
-	setIns(insSYA, 0x9C, 5, addrAbsoluteX)
-	setIns(insTOP, 0x0C, 4, addrAbsolute)
-	setIns(insTOP, 0x1C, 4, addrAbsoluteX)
-	setIns(insTOP, 0x3C, 4, addrAbsoluteX)
-	setIns(insTOP, 0x5C, 4, addrAbsoluteX)
-	setIns(insTOP, 0x7C, 4, addrAbsoluteX)
-	setIns(insTOP, 0xDC, 4, addrAbsoluteX)
-	setIns(insTOP, 0xFC, 4, addrAbsoluteX)
-	setIns(insXAA, 0x8B, 2, addrImmediate)
-	setIns(insXAS, 0x9B, 5, addrAbsoluteY)
-}
